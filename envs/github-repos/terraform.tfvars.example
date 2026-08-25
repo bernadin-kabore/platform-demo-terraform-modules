@@ -1,0 +1,10 @@
+github_org = "YOUR_ORG"
+
+# Uncomment to add a scaffolded service repo once it exists:
+# repositories = [
+#   "platform-demo-terraform-modules",
+#   "platform-demo-gitops",
+#   "platform-demo-backstage",
+#   "platform-demo-hello-world-template",
+#   "checkout-api",
+# ]
