@@ -1,0 +1,120 @@
+name: terraform-ci
+
+on:
+  pull_request:
+    paths: ["modules/**", "envs/**"]
+  push:
+    branches: [main]
+    paths: ["modules/**", "envs/**"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write # for OIDC federation to AWS, no long-lived keys
+
+jobs:
+  lint-and-validate:
+    strategy:
+      matrix:
+        env: [dev, github-repos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (no backend)
+        working-directory: envs/${{ matrix.env }}
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        working-directory: envs/${{ matrix.env }}
+        run: terraform validate
+
+      - name: tflint
+        uses: terraform-linters/setup-tflint@v4
+      - run: tflint --init && tflint --recursive
+        working-directory: .
+
+      - name: checkov (IaC security scan)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: false
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+
+  plan-dev:
+    needs: lint-and-validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: terraform init
+        working-directory: envs/dev
+        run: terraform init -backend-config=backend.hcl
+
+      - name: terraform plan
+        working-directory: envs/dev
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Terraform plan ran for envs/dev — see the job logs for the full diff."
+            })
+
+  plan-github-repos:
+    needs: lint-and-validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.TF_GITHUB_ADMIN_TOKEN }} # fine-grained PAT, Administration r/w on the target repos — distinct from the default GITHUB_TOKEN, which can't touch branch protection
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: terraform init
+        working-directory: envs/github-repos
+        run: terraform init -backend-config=backend.hcl
+
+      - name: terraform plan
+        working-directory: envs/github-repos
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Terraform plan ran for envs/github-repos — see the job logs for the full diff."
+            })
