@@ -42,3 +42,16 @@ variable "enforce_admins" {
   type        = bool
   default     = true
 }
+
+variable "deploy_bot_app_id" {
+  description = <<-EOT
+    Numeric GitHub App ID of "platform-deploy-bot" — only used by
+    organization-ruleset.tf.example (see that file and this module's
+    README). Unused while these repos are on a personal account; the
+    equivalent bypass is configured via app-config.yaml's
+    platform.deployBotAppId instead, read by the
+    platform:github:branch-protection scaffolder action.
+  EOT
+  type        = number
+  default     = null
+}

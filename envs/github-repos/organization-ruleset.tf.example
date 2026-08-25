@@ -1,0 +1,63 @@
+# NOT applied — bernadin-kabore is a personal GitHub account, and
+# github_organization_ruleset only exists on Organizations. Rename this file
+# to organization-ruleset.tf (and delete main.tf's per-repo
+# github_branch_protection resources, and delete the whole
+# platform:github:branch-protection scaffolder action + its step in every
+# template.yaml) the day these repos move under an Organization. This one
+# resource then covers every repo the org owns FOREVER, including ones that
+# don't exist yet — no scaffolder step, no per-repo Terraform state, no
+# "onboard a new service" checklist item. That's the entire point of this
+# file: prove the personal-account workaround is strictly worse, and show
+# exactly what replaces it.
+resource "github_organization_ruleset" "platform_default" {
+  name        = "platform-default"
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = ["refs/heads/main", "refs/heads/develop", "refs/heads/release/*"]
+      exclude = []
+    }
+    repository_name {
+      include = ["~ALL"] # every repo in the org, present and future
+      exclude = []
+    }
+  }
+
+  bypass_actors {
+    actor_id    = var.deploy_bot_app_id # the platform-deploy-bot GitHub App
+    actor_type  = "Integration"
+    bypass_mode = "always"
+  }
+
+  rules {
+    deletion                = true
+    non_fast_forward        = true
+    required_signatures     = true
+
+    pull_request {
+      required_approving_review_count   = var.required_approving_review_count
+      dismiss_stale_reviews_on_push     = true
+      require_last_push_approval        = false
+      required_review_thread_resolution = false
+    }
+
+    required_status_checks {
+      strict_required_status_checks_policy = true
+      do_not_enforce_on_create              = true
+      required_check {
+        context = "test"
+      }
+      required_check {
+        context = "sast"
+      }
+      required_check {
+        context = "sca"
+      }
+      required_check {
+        context = "coverage / check"
+      }
+    }
+  }
+}
