@@ -93,6 +93,10 @@ module "irsa_opencost" {
   tags                 = local.tags
 }
 
+# Representative policy only. Before a real deploy, sync
+# policies/aws-load-balancer-controller.json against the upstream policy at
+# kubernetes-sigs/aws-load-balancer-controller (docs/install/iam_policy.json);
+# AWS revises the exact action list between controller versions.
 module "irsa_aws_lb_controller" {
   source               = "../../modules/irsa"
   role_name            = "${var.cluster_name}-aws-lb-controller"
