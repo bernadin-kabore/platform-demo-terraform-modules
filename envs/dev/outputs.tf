@@ -45,3 +45,8 @@ output "ecr_repository_urls" {
 output "service_ci_role_arns" {
   value = module.service_delivery.ci_role_arns
 }
+
+output "ai_platform_agent_role_arn" {
+  description = "Annotate the ai-platform-agent service account with this — see platform-demo-gitops/apps/ai-platform-agent/serviceaccount.yaml"
+  value       = module.irsa_ai_platform_agent.role_arn
+}

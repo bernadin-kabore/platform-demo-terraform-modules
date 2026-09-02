@@ -8,6 +8,7 @@ ecr_repository_names = ["hello-world"]
 github_owner         = "YOUR_GITHUB_ORG"
 # Preferred capability contract for new services:
 # services = {
-#   checkout-api = { github_owner = "YOUR_GITHUB_ORG" }
+#   checkout-api           = { github_owner = "YOUR_GITHUB_ORG" }
+#   platform-demo-ai-agent = { github_owner = "YOUR_GITHUB_ORG" }
 # }
 owner               = "your-name"

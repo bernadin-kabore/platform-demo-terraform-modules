@@ -52,3 +52,14 @@ variable "owner" {
   type        = string
   default     = "platform-team"
 }
+
+variable "bedrock_model_ids" {
+  description = <<-EOT
+    Claude model IDs the AI Platform Agent may invoke through Amazon Bedrock.
+    Model IDs on the Messages-API Bedrock endpoint carry an "anthropic." prefix
+    and no date suffix. Listing them explicitly rather than granting Bedrock
+    wholesale keeps the agent's blast radius to "can invoke these models".
+  EOT
+  type        = list(string)
+  default     = ["anthropic.claude-opus-5"]
+}

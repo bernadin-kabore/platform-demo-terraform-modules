@@ -39,6 +39,44 @@ Note that `terraform destroy` does **not** remove dynamically provisioned
 PersistentVolumes; EBS volumes created by in-cluster StorageClasses outlive
 the cluster and keep billing. Check for unattached volumes after teardown.
 
+## The AI Platform Agent's AWS footprint
+
+One IRSA role, and it grants one action.
+
+`module.irsa_ai_platform_agent` in `envs/dev/main.tf` lets the agent's pod call
+`bedrock-mantle:CreateInference` on the Claude model ARNs listed in
+`var.bedrock_model_ids`, and nothing else — no S3, no EKS, no IAM. That is the
+entire AWS-side privilege of the component that can open pull requests across
+every repository in the platform.
+
+This is the reason the agent runs on Claude in Amazon Bedrock rather than the
+first-party Anthropic API: **there is no key to deliver.** The pod assumes the
+role through the same IRSA mechanism Crossplane, OpenCost and external-dns
+already use, and the SDK signs each request with the credentials it projects.
+An API key would instead have needed a hand-created Kubernetes Secret, which is
+exactly the anti-pattern `PLATFORM_ROADMAP.md` Part 2 item 1 exists to remove.
+
+The agent's image and CI role come from the existing
+`compositions/service-delivery-foundation` rather than anything bespoke — it is
+an image-producing repository like any other. Add it to the `services` map in
+`terraform.tfvars` (that file is gitignored; see `terraform.tfvars.example`):
+
+```hcl
+services = {
+  hello-world            = { github_owner = "bernadin-kabore" }
+  platform-demo-ai-agent = { github_owner = "bernadin-kabore" }
+}
+```
+
+The map key must match the GitHub repository name — it is what the CI role's
+OIDC subject condition is built from.
+
+`envs/github-repos` protects `platform-demo-ai-agent` on the same terms as the
+other four repositories. The agent's own GitHub App appears in no
+`bypass_actors` list anywhere, which is what makes "human approval" in the
+architecture a real gate: it can propose everywhere and merge nowhere,
+including in its own repository.
+
 ## Design principles
 
 - **Least privilege via IRSA everywhere.** No controller runs with node-wide

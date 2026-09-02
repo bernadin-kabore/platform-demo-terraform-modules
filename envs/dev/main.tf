@@ -118,3 +118,52 @@ module "irsa_external_dns" {
   inline_policy_json   = file("${path.module}/policies/external-dns.json")
   tags                 = local.tags
 }
+
+# ---------------------------------------------------------------------------
+# AI Platform Agent — access to Claude in Amazon Bedrock, and nothing else.
+#
+# This is the credential path that made Bedrock the right choice over the
+# first-party Anthropic API: there is no key. The agent's pod assumes this role
+# through the same IRSA mechanism Crossplane, OpenCost and external-dns already
+# use, and the SDK signs each request with the credentials it projects. The
+# platform has no secrets-delivery mechanism yet (PLATFORM_ROADMAP.md Part 2
+# item 1), so a model API key would have had to be a hand-created Kubernetes
+# Secret — exactly the anti-pattern that roadmap item exists to remove.
+#
+# The GitHub App private key the agent also needs is still that manual Secret,
+# because nothing here can deliver it. See
+# platform-demo-gitops/apps/ai-platform-agent/deployment.yaml.
+# ---------------------------------------------------------------------------
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "ai_platform_agent_bedrock" {
+  statement {
+    sid    = "InvokeClaudeModels"
+    effect = "Allow"
+    actions = [
+      # The Messages-API Bedrock endpoint (bedrock-mantle.<region>.api.aws).
+      "bedrock-mantle:CreateInference",
+    ]
+    # Scoped to the specific Claude models this agent is allowed to invoke,
+    # rather than to Bedrock as a whole. Both the foundation-model ARN and the
+    # inference-profile ARN are listed because the global endpoint routes
+    # through a cross-region inference profile; which of the two a given call
+    # authorises against depends on the model ID prefix the agent sends.
+    resources = concat(
+      [for id in var.bedrock_model_ids : "arn:aws:bedrock:${var.aws_region}::foundation-model/${id}"],
+      [for id in var.bedrock_model_ids : "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${id}"],
+    )
+  }
+}
+
+module "irsa_ai_platform_agent" {
+  source               = "../../modules/irsa"
+  role_name            = "${var.cluster_name}-ai-platform-agent"
+  oidc_provider_arn    = module.eks_foundation.oidc_provider_arn
+  oidc_provider_url    = module.eks_foundation.oidc_provider_url
+  namespace            = "ai-platform"
+  service_account_name = "ai-platform-agent"
+  inline_policy_json   = data.aws_iam_policy_document.ai_platform_agent_bedrock.json
+  tags                 = local.tags
+}
