@@ -5,6 +5,11 @@
 *.tfvars
 !*.tfvars.example
 crash.log
+# Saved plan files are binary and environment-specific
+tfplan
+*.tfplan
+# Backend config names the state bucket for a specific environment
+backend.hcl
 
 # Node
 node_modules/
