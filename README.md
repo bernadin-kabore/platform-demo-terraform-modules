@@ -18,6 +18,26 @@ ArgoCD, Kyverno, etc.) are installed via GitOps from the
 | [`irsa`](modules/irsa) | Generic IAM-Roles-for-Service-Accounts factory, reused per controller |
 | [`karpenter`](modules/karpenter) | Karpenter controller/node IAM + spot interruption queue |
 | [`ecr`](modules/ecr) | Immutable, scan-on-push ECR repositories |
+| [`compositions/eks-foundation`](modules/compositions/eks-foundation) | Composes `vpc` + `eks` into one cluster foundation |
+| [`compositions/service-delivery-foundation`](modules/compositions/service-delivery-foundation) | Per-service ECR repo + least-privilege GitHub Actions CI role, keyed off the `services` map |
+
+## Before the first apply
+
+Two things bite on a clean account, both learned the hard way:
+
+- **`kubernetes_version` must be a version EKS still offers.** AWS retires
+  old versions, and an apply against a retired one fails outright. Check
+  with `aws eks describe-cluster-versions` before setting it; the value in
+  `terraform.tfvars` takes precedence over the module default.
+- **ECR enhanced scanning needs Amazon Inspector enabled.** `modules/ecr`
+  sets `scan_type = "ENHANCED"`, which fails with a misleading `AccessDenied`
+  on `PutRegistryScanningConfiguration` if Inspector is off in the account.
+  It is not an IAM problem. The module should arguably own this with an
+  `aws_inspector2_enabler` resource.
+
+Note that `terraform destroy` does **not** remove dynamically provisioned
+PersistentVolumes; EBS volumes created by in-cluster StorageClasses outlive
+the cluster and keep billing. Check for unattached volumes after teardown.
 
 ## Design principles
 
@@ -49,10 +69,11 @@ terraform init && terraform apply
 # 2. Point envs/dev at that backend
 cd ../../envs/dev
 cp terraform.tfvars.example terraform.tfvars   # edit values, esp. admin_cidrs
-# fill in envs/dev/backend.tf or pass -backend-config
-terraform init
-terraform plan
-terraform apply
+# write backend.hcl naming the bucket/table from step 1 (gitignored - it is
+# environment-specific), then:
+terraform init -backend-config=backend.hcl
+terraform plan -out=tfplan
+terraform apply tfplan
 
 # 3. Configure kubectl
 $(terraform output -raw configure_kubectl)
