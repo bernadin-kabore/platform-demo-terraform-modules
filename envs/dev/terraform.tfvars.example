@@ -1,14 +1,22 @@
-aws_region          = "us-east-1"
-cluster_name        = "platform-demo"
-kubernetes_version  = "1.30"
-vpc_cidr            = "10.20.0.0/16"
-az_count            = 2
-admin_cidrs         = ["203.0.113.4/32"] # replace with your own IP/32
-ecr_repository_names = ["hello-world"]
-github_owner         = "YOUR_GITHUB_ORG"
-# Preferred capability contract for new services:
-# services = {
-#   checkout-api           = { github_owner = "YOUR_GITHUB_ORG" }
-#   platform-demo-ai-agent = { github_owner = "YOUR_GITHUB_ORG" }
-# }
-owner               = "your-name"
+aws_region         = "us-east-1"
+cluster_name       = "platform-demo"
+kubernetes_version = "1.33"
+vpc_cidr           = "10.20.0.0/16"
+az_count           = 2
+admin_cidrs        = ["203.0.113.4/32"] # replace with your own IP/32
+owner              = "your-name"
+
+# One entry per application the Backstage scaffolder has created. The key is
+# the application name; the source repository defaults to <key>-source, which
+# is what the scaffolder publishes.
+applications = {
+  # checkout-platform = {
+  #   github_owner = "YOUR_GITHUB_OWNER"
+  #   services     = ["frontend", "auth", "payments", "worker"]
+  # }
+}
+
+# The platform's own single-image repositories, which are not applications.
+platform_services = {
+  platform-demo-ai-agent = { github_owner = "YOUR_GITHUB_OWNER" }
+}

@@ -44,30 +44,36 @@ status check names, the deploy-bot bypass identity — stays exactly as-is,
 because both approaches ultimately call the same underlying GitHub
 Rulesets concepts.
 
-## The deploy bot bypass identity
+## The deploy bot identity
 
-Every scaffolded service's CI pushes an automated image-tag bump straight
-to `main` after a successful deploy (`update-manifests` job in `ci.yml`).
-Once direct pushes to `main` are blocked, that push needs to come from an
-identity the ruleset explicitly exempts — a long-lived PAT would work but
-is a standing credential to leak and rotate, so this uses a dedicated
-GitHub App instead:
+An application's CI has to write to a repository it does not own: after a
+successful build it opens a pull request against that application's GitOps
+repository bumping the image references. It needs a credential to do that, and a
+long-lived PAT would be a standing secret to leak and rotate, so this uses a
+dedicated GitHub App instead:
 
 1. Create a GitHub App named e.g. `platform-deploy-bot` (Settings →
    Developer settings → GitHub Apps → New). Permissions: **Contents:
-   Read & write**, **Metadata: Read-only**. No webhook needed.
-2. Install it on every repo it needs to push to (the 4 platform repos, and
-   each scaffolded service repo).
+   Read & write**, **Pull requests: Read & write**, **Metadata: Read-only**.
+   No webhook needed.
+2. Install it on every GitOps repository the platform deploys from, and on
+   `platform-demo-gitops` so the AI Platform Agent's own CI can propose its
+   deployment there.
 3. Generate a private key for it; note its numeric **App ID**.
 4. Set `PLATFORM_DEPLOY_BOT_APP_ID` and `PLATFORM_DEPLOY_BOT_PRIVATE_KEY` as
    repo (or org) secrets — consumed by `actions/create-github-app-token` in
-   every `ci.yml`'s `update-manifests` job to mint a short-lived
-   installation token per run.
-5. Set `PLATFORM_DEPLOY_BOT_APP_ID` as the `PLATFORM_DEPLOY_BOT_APP_ID` env
-   var wherever Backstage's backend runs, mapped to `app-config.yaml`'s
-   `platform.deployBotAppId` — that's what the `platform:github:branch-protection`
-   action reads to add the App as a `bypass_actors` entry when it creates
-   each new repo's ruleset.
+   each application's `gitops-pr` job to mint a short-lived installation token
+   scoped to that one repository, per run.
+
+**It holds no ruleset bypass anywhere, and should not be given one.** It used to:
+a scaffolded service's CI pushed its image-tag bump directly to its own
+protected `main`, which needed an exemption. Applications now advance deployment
+state by opening a pull request that a human merges, so nothing on the platform
+has a reason to write past a ruleset. `app-config.yaml`'s
+`platform.deployBotAppId` is still read by the
+`platform:github:branch-protection` action, but only when a caller explicitly
+passes `allowDeployBotBypass` — and nothing does. A bypass actor is the one
+thing that makes "every change is reviewed" untrue without looking untrue.
 
 The 4 platform repos have no automated bot pushing to them, so
 `require_signed_commits = true` here applies to every contributor with no
