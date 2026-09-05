@@ -18,6 +18,64 @@ ArgoCD, Kyverno, etc.) are installed via GitOps from the
 | [`irsa`](modules/irsa) | Generic IAM-Roles-for-Service-Accounts factory, reused per controller |
 | [`karpenter`](modules/karpenter) | Karpenter controller/node IAM + spot interruption queue |
 | [`ecr`](modules/ecr) | Immutable, scan-on-push ECR repositories |
+| [`compositions/eks-foundation`](modules/compositions/eks-foundation) | Composes `vpc` + `eks` into one cluster foundation |
+| [`compositions/service-delivery-foundation`](modules/compositions/service-delivery-foundation) | Per-service ECR repo + least-privilege GitHub Actions CI role, keyed off the `services` map |
+
+## Before the first apply
+
+Two things bite on a clean account, both learned the hard way:
+
+- **`kubernetes_version` must be a version EKS still offers.** AWS retires
+  old versions, and an apply against a retired one fails outright. Check
+  with `aws eks describe-cluster-versions` before setting it; the value in
+  `terraform.tfvars` takes precedence over the module default.
+- **ECR enhanced scanning needs Amazon Inspector enabled.** `modules/ecr`
+  sets `scan_type = "ENHANCED"`, which fails with a misleading `AccessDenied`
+  on `PutRegistryScanningConfiguration` if Inspector is off in the account.
+  It is not an IAM problem. The module should arguably own this with an
+  `aws_inspector2_enabler` resource.
+
+Note that `terraform destroy` does **not** remove dynamically provisioned
+PersistentVolumes; EBS volumes created by in-cluster StorageClasses outlive
+the cluster and keep billing. Check for unattached volumes after teardown.
+
+## The AI Platform Agent's AWS footprint
+
+One IRSA role, and it grants one action.
+
+`module.irsa_ai_platform_agent` in `envs/dev/main.tf` lets the agent's pod call
+`bedrock-mantle:CreateInference` on the Claude model ARNs listed in
+`var.bedrock_model_ids`, and nothing else — no S3, no EKS, no IAM. That is the
+entire AWS-side privilege of the component that can open pull requests across
+every repository in the platform.
+
+This is the reason the agent runs on Claude in Amazon Bedrock rather than the
+first-party Anthropic API: **there is no key to deliver.** The pod assumes the
+role through the same IRSA mechanism Crossplane, OpenCost and external-dns
+already use, and the SDK signs each request with the credentials it projects.
+An API key would instead have needed a hand-created Kubernetes Secret, which is
+exactly the anti-pattern `PLATFORM_ROADMAP.md` Part 2 item 1 exists to remove.
+
+The agent's image and CI role come from the existing
+`compositions/service-delivery-foundation` rather than anything bespoke — it is
+an image-producing repository like any other. Add it to the `services` map in
+`terraform.tfvars` (that file is gitignored; see `terraform.tfvars.example`):
+
+```hcl
+services = {
+  hello-world            = { github_owner = "bernadin-kabore" }
+  platform-demo-ai-agent = { github_owner = "bernadin-kabore" }
+}
+```
+
+The map key must match the GitHub repository name — it is what the CI role's
+OIDC subject condition is built from.
+
+`envs/github-repos` protects `platform-demo-ai-agent` on the same terms as the
+other four repositories. The agent's own GitHub App appears in no
+`bypass_actors` list anywhere, which is what makes "human approval" in the
+architecture a real gate: it can propose everywhere and merge nowhere,
+including in its own repository.
 
 ## Design principles
 
@@ -49,10 +107,11 @@ terraform init && terraform apply
 # 2. Point envs/dev at that backend
 cd ../../envs/dev
 cp terraform.tfvars.example terraform.tfvars   # edit values, esp. admin_cidrs
-# fill in envs/dev/backend.tf or pass -backend-config
-terraform init
-terraform plan
-terraform apply
+# write backend.hcl naming the bucket/table from step 1 (gitignored - it is
+# environment-specific), then:
+terraform init -backend-config=backend.hcl
+terraform plan -out=tfplan
+terraform apply tfplan
 
 # 3. Configure kubectl
 $(terraform output -raw configure_kubectl)

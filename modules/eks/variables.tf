@@ -6,7 +6,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Kubernetes version for the control plane"
   type        = string
-  default     = "1.30"
+  default     = "1.36"
 }
 
 variable "vpc_id" {

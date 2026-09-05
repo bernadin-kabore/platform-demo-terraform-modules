@@ -4,13 +4,19 @@ variable "github_org" {
 }
 
 variable "repositories" {
-  description = "Repos to apply branch protection to. Start with the 4 platform repos; add a service repo name here once it exists (see README for the alternative: driving this list from platform-demo-gitops/services/*/config.json instead of hand-maintaining it)."
+  description = "Repos to apply branch protection to. Start with the 5 platform repos; add a service repo name here once it exists (see README for the alternative: driving this list from platform-demo-gitops/services/*/config.json instead of hand-maintaining it)."
   type        = list(string)
   default = [
     "platform-demo-terraform-modules",
     "platform-demo-gitops",
     "platform-demo-backstage",
     "platform-demo-hello-world-template",
+    # The AI Platform Agent opens pull requests against the four repos above.
+    # It is protected on the same terms as they are, which is what makes
+    # "human approval" a real gate rather than a diagram box: the agent's App
+    # appears in no bypass_actors list anywhere, so it can propose and it can
+    # never merge — including into its own repository.
+    "platform-demo-ai-agent",
   ]
 }
 
@@ -27,6 +33,12 @@ variable "required_status_check_contexts" {
     ci.yml calling code-coverage.yml's `check` job — see
     platform-demo-hello-world-template/.github/workflows/code-coverage.yml.
     test/sast/sca are the ci.yml jobs of the same name.
+
+    Note that platform-demo-ai-agent's ci.yml also runs an "evals" job, which
+    is not listed here because this list applies to every repository uniformly
+    and no other repository has one. Its enforcement comes from being a
+    required dependency of that repository's build-scan-sign job: an image is
+    never built, so never signed, so never admitted, if the eval suite fails.
   EOT
   type        = list(string)
   default     = ["test", "sast", "sca", "coverage / check"]
