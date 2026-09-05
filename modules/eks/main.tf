@@ -40,7 +40,11 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 resource "aws_security_group" "cluster" {
   name_prefix = "${var.cluster_name}-cluster-"
   vpc_id      = var.vpc_id
-  tags        = merge(var.tags, { Name = "${var.cluster_name}-cluster-sg" })
+  tags = merge(var.tags, {
+    Name                                        = "${var.cluster_name}-cluster-sg"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "karpenter.sh/discovery"                    = var.cluster_name
+  })
 
   lifecycle {
     create_before_destroy = true
@@ -97,7 +101,6 @@ resource "aws_iam_role_policy_attachment" "node_policies" {
     "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
     "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-    "arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy",
   ])
   role       = aws_iam_role.node.name
   policy_arn = each.value
@@ -122,6 +125,12 @@ resource "aws_eks_node_group" "system" {
     "node.kubernetes.io/role" = "system"
   }
 
+  taint {
+    key    = "CriticalAddonsOnly"
+    value  = "true"
+    effect = "NO_SCHEDULE"
+  }
+
   tags = var.tags
 
   depends_on = [aws_iam_role_policy_attachment.node_policies]
@@ -138,6 +147,7 @@ resource "aws_eks_node_group" "system" {
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name                = aws_eks_cluster.this.name
   addon_name                  = "vpc-cni"
+  configuration_values        = jsonencode({ enableNetworkPolicy = "true" })
   resolve_conflicts_on_update = "OVERWRITE"
   tags                        = var.tags
 }
@@ -157,9 +167,41 @@ resource "aws_eks_addon" "coredns" {
   depends_on                  = [aws_eks_node_group.system]
 }
 
+data "aws_iam_policy_document" "ebs_csi_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${var.cluster_name}-ebs-csi"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_trust.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name                = aws_eks_cluster.this.name
   addon_name                  = "aws-ebs-csi-driver"
+  service_account_role_arn    = aws_iam_role.ebs_csi.arn
   resolve_conflicts_on_update = "OVERWRITE"
   tags                        = var.tags
   depends_on                  = [aws_eks_node_group.system]

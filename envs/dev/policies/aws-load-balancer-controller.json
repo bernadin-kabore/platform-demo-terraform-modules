@@ -1,5 +1,4 @@
 {
-  "_comment": "Representative policy for aws-load-balancer-controller. Before a real deploy, sync this file against the current upstream policy published at https://github.com/kubernetes-sigs/aws-load-balancer-controller (docs/install/iam_policy.json) — AWS revises the exact action list between controller versions.",
   "Version": "2012-10-17",
   "Statement": [
     {

@@ -5,4 +5,10 @@ vpc_cidr            = "10.20.0.0/16"
 az_count            = 2
 admin_cidrs         = ["203.0.113.4/32"] # replace with your own IP/32
 ecr_repository_names = ["hello-world"]
+github_owner         = "YOUR_GITHUB_ORG"
+# Preferred capability contract for new services:
+# services = {
+#   checkout-api           = { github_owner = "YOUR_GITHUB_ORG" }
+#   platform-demo-ai-agent = { github_owner = "YOUR_GITHUB_ORG" }
+# }
 owner               = "your-name"

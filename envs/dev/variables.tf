@@ -30,12 +30,36 @@ variable "admin_cidrs" {
 }
 
 variable "ecr_repository_names" {
-  type    = list(string)
-  default = ["hello-world"]
+  description = "Deprecated compatibility input; use services instead"
+  type        = list(string)
+  default     = ["hello-world"]
+}
+
+variable "services" {
+  description = "One ECR repository and least-privilege GitHub Actions CI role per service"
+  type        = map(object({ github_owner = string }))
+  default     = {}
+}
+
+variable "github_owner" {
+  description = "Compatibility owner used for ecr_repository_names entries; services entries should set their own owner"
+  type        = string
+  default     = "bernadin-kabore"
 }
 
 variable "owner" {
   description = "Tag identifying who owns these resources"
   type        = string
   default     = "platform-team"
+}
+
+variable "bedrock_model_ids" {
+  description = <<-EOT
+    Claude model IDs the AI Platform Agent may invoke through Amazon Bedrock.
+    Model IDs on the Messages-API Bedrock endpoint carry an "anthropic." prefix
+    and no date suffix. Listing them explicitly rather than granting Bedrock
+    wholesale keeps the agent's blast radius to "can invoke these models".
+  EOT
+  type        = list(string)
+  default     = ["anthropic.claude-opus-5"]
 }
