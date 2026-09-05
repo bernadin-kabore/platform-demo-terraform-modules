@@ -88,6 +88,11 @@ data "aws_iam_policy_document" "controller_permissions" {
       "ec2:RunInstances",
       "ec2:CreateFleet",
       "ec2:CreateLaunchTemplate",
+      # Karpenter creates a launch template per distinct node shape and garbage
+      # collects them. Without delete permission it logs "failed to delete
+      # launch template" on every reconcile and the templates accumulate
+      # against the account limit indefinitely.
+      "ec2:DeleteLaunchTemplate",
       "ec2:CreateTags",
       "ec2:TerminateInstances",
       "ec2:DescribeInstances",
@@ -201,4 +206,43 @@ resource "aws_cloudwatch_event_target" "rebalance" {
 resource "aws_cloudwatch_event_target" "instance_state_change" {
   rule = aws_cloudwatch_event_rule.instance_state_change.name
   arn  = aws_sqs_queue.interruption.arn
+}
+
+# ---------------------------------------------------------------------------
+# Cluster access for the nodes Karpenter launches.
+#
+# This cluster uses the API authentication mode, so there is no aws-auth
+# ConfigMap: a node role that is not registered as an access entry produces
+# instances that boot, run healthily in EC2, and never join. Nothing errors —
+# the NodeClaim simply sits at Registered=Unknown forever, and the symptom that
+# reaches you is unrelated pods Pending on "Too many pods" because capacity
+# never grows. The managed node group gets its entry created by EKS itself,
+# which is why that one works and this one has to be declared.
+# ---------------------------------------------------------------------------
+
+resource "aws_eks_access_entry" "karpenter_node" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.node.arn
+  type          = "EC2_LINUX"
+  tags          = var.tags
+}
+
+# ---------------------------------------------------------------------------
+# The EC2 Spot service-linked role.
+#
+# The default NodePool is spot-first, and the first spot fleet request in an
+# account fails with
+# "AuthFailure.ServiceLinkedRoleCreationNotPermitted" unless this role exists.
+# It is account-global and shared by everything that uses Spot, so it is
+# created only when var.create_spot_service_linked_role is true — set it to
+# false in any account where another stack already owns it, and import it if
+# this configuration should adopt one that already exists:
+#
+#   terraform import 'module.karpenter_iam.aws_iam_service_linked_role.spot[0]' \
+#     arn:aws:iam::<account>:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot
+# ---------------------------------------------------------------------------
+
+resource "aws_iam_service_linked_role" "spot" {
+  count            = var.create_spot_service_linked_role ? 1 : 0
+  aws_service_name = "spot.amazonaws.com"
 }
