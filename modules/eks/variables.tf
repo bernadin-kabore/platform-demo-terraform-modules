@@ -39,7 +39,7 @@ variable "public_access_cidrs" {
 variable "system_node_instance_types" {
   description = "Instance types for the small system node group"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.large"]
 }
 
 variable "system_node_desired_size" {

@@ -78,6 +78,58 @@ module "irsa_crossplane" {
   tags                 = local.tags
 }
 
+# ---------------------------------------------------------------------------
+# Kyverno's admission controller needs to READ the registry it polices.
+#
+# require-signed-images and require-sbom-attestation verify a cosign signature
+# stored in ECR beside the image, as a `sha256-<digest>.sig` tag. ECR is
+# private, so fetching that manifest is an authenticated pull -- and until this
+# role existed Kyverno had no AWS identity at all. The failure is indirect:
+# admission does not report "cannot authenticate", it reports
+#
+#   image verification failed: Get "https://<account>.dkr.ecr...": context canceled
+#
+# as the webhook's own 30s budget runs out, so a correctly signed image is
+# refused and it reads like a bad signature.
+#
+# Read-only, and deliberately not scoped to one repository: this role reads
+# whatever a policy is asked to verify, which is every image the cluster admits
+# and not a list Terraform can know in advance. It can pull manifests and
+# layers; it cannot push, tag, or delete.
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "kyverno_ecr_read" {
+  statement {
+    sid       = "AuthorizeToRegistry"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    sid    = "ReadImagesAndSignatures"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:DescribeImages",
+      "ecr:ListImages",
+    ]
+    resources = ["arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/*"]
+  }
+}
+
+module "irsa_kyverno" {
+  source               = "../../modules/irsa"
+  role_name            = "${var.cluster_name}-kyverno-admission"
+  oidc_provider_arn    = module.eks_foundation.oidc_provider_arn
+  oidc_provider_url    = module.eks_foundation.oidc_provider_url
+  namespace            = "kyverno"
+  service_account_name = "kyverno-admission-controller"
+  inline_policy_json   = data.aws_iam_policy_document.kyverno_ecr_read.json
+  tags                 = local.tags
+}
+
 module "irsa_opencost" {
   source               = "../../modules/irsa"
   role_name            = "${var.cluster_name}-opencost"
