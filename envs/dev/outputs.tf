@@ -42,8 +42,9 @@ output "ecr_repository_urls" {
   value = module.service_delivery.repository_urls
 }
 
-output "service_ci_role_arns" {
-  value = module.service_delivery.ci_role_arns
+output "ci_role_arns" {
+  description = "One CI role per application (and per platform service). Set the matching ARN as AWS_CI_ROLE_ARN on that application's source repository."
+  value       = module.service_delivery.ci_role_arns
 }
 
 output "ai_platform_agent_role_arn" {
