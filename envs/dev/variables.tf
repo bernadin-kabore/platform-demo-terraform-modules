@@ -29,22 +29,45 @@ variable "admin_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
-variable "ecr_repository_names" {
-  description = "Deprecated compatibility input; use services instead"
-  type        = list(string)
-  default     = ["hello-world"]
+variable "applications" {
+  description = <<-EOT
+    Every application the platform delivers, keyed by application name.
+
+    An application is one source repository holding N services. This produces
+    one ECR repository per service (<application>-<service>) and one CI role
+    per application, federated from that application's source repository.
+
+    Add an entry here when the Backstage scaffolder creates an application —
+    until Terraform has run there is no repository to push images to and no
+    role for its pipeline to assume.
+
+      applications = {
+        checkout-platform = {
+          github_owner = "bernadin-kabore"
+          services     = ["frontend", "auth", "payments", "worker"]
+        }
+      }
+
+    This replaced the earlier `services` map and the `ecr_repository_names`
+    list, both of which assumed one repository per service and keyed a CI role
+    by a repository name that no longer exists.
+  EOT
+  type = map(object({
+    github_owner = string
+    services     = list(string)
+    source_repo  = optional(string)
+  }))
+  default = {}
 }
 
-variable "services" {
-  description = "One ECR repository and least-privilege GitHub Actions CI role per service"
+variable "platform_services" {
+  description = <<-EOT
+    The platform's own image-producing repositories — one repository, one
+    image, never scaffolded. Their ECR repository keeps the repository's own
+    name because platform-demo-gitops already references it that way.
+  EOT
   type        = map(object({ github_owner = string }))
   default     = {}
-}
-
-variable "github_owner" {
-  description = "Compatibility owner used for ecr_repository_names entries; services entries should set their own owner"
-  type        = string
-  default     = "bernadin-kabore"
 }
 
 variable "owner" {

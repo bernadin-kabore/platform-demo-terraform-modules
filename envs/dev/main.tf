@@ -6,11 +6,6 @@ locals {
     Owner       = var.owner
   }
 
-  # Preserve existing ecr_repository_names callers while the developer-facing
-  # services map becomes the preferred capability contract.
-  effective_services = length(var.services) > 0 ? var.services : {
-    for name in var.ecr_repository_names : name => { github_owner = var.github_owner }
-  }
 }
 
 module "eks_foundation" {
@@ -35,10 +30,11 @@ module "karpenter_iam" {
 }
 
 module "service_delivery" {
-  source      = "../../modules/compositions/service-delivery-foundation"
-  name_prefix = var.cluster_name
-  services    = local.effective_services
-  tags        = local.tags
+  source            = "../../modules/compositions/service-delivery-foundation"
+  name_prefix       = var.cluster_name
+  applications      = var.applications
+  platform_services = var.platform_services
+  tags              = local.tags
 }
 
 # ---------------------------------------------------------------------------

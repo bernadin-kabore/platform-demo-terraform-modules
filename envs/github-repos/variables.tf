@@ -28,11 +28,21 @@ variable "protected_branch_patterns" {
 
 variable "required_status_check_contexts" {
   description = <<-EOT
-    Status check context names that must pass before merging. "coverage / check"
-    is the context GitHub derives from the `coverage` job in each service's
-    ci.yml calling code-coverage.yml's `check` job — see
+    Status check context names that must pass before merging. This env protects
+    the PLATFORM repositories listed in var.repositories, whose workflows have
+    fixed job names: test/sast/sca are ci.yml jobs of the same name, and
+    "coverage / check" is the context GitHub derives from the `coverage` job
+    calling code-coverage.yml's `check` job — see
     platform-demo-hello-world-template/.github/workflows/code-coverage.yml.
-    test/sast/sca are the ci.yml jobs of the same name.
+
+    Application repositories are NOT protected here. They are created by the
+    Backstage scaffolder, which applies its own ruleset through the
+    platform:github:branch-protection action, and their required contexts are
+    necessarily different: an application pipeline runs one matrix job per
+    affected service, and a job whose name contains a service name cannot be
+    written down in advance. Those repositories require `ci-gate` — a single
+    job that fans every stage in — plus the two repository-wide scans,
+    `semgrep` and `gitleaks`.
 
     Note that platform-demo-ai-agent's ci.yml also runs an "evals" job, which
     is not listed here because this list applies to every repository uniformly
@@ -59,10 +69,16 @@ variable "deploy_bot_app_id" {
   description = <<-EOT
     Numeric GitHub App ID of "platform-deploy-bot" — only used by
     organization-ruleset.tf.example (see that file and this module's
-    README). Unused while these repos are on a personal account; the
-    equivalent bypass is configured via app-config.yaml's
-    platform.deployBotAppId instead, read by the
-    platform:github:branch-protection scaffolder action.
+    README). Unused while these repos are on a personal account.
+
+    Note that nothing on this platform currently needs a ruleset bypass at
+    all. The deploy bot used to hold one on scaffolded repositories so CI
+    could push an image-tag bump straight to a protected main; under the
+    application model CI opens a pull request against the application's
+    GitOps repository instead, and the branch-protection scaffolder action
+    grants a bypass only when explicitly asked (allowDeployBotBypass), which
+    nothing asks for. Keep it that way: a bypass actor is the one thing that
+    makes "every change is reviewed" untrue without looking untrue.
   EOT
   type        = number
   default     = null
