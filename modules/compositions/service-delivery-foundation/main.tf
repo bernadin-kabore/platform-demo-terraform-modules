@@ -97,7 +97,25 @@ data "aws_iam_policy_document" "ci_trust" {
       # The SOURCE repository, on main only. Never the GitOps repository — that
       # one builds and publishes nothing, and giving it a push credential would
       # undo the separation the whole model exists for.
-      values = ["repo:${each.value.owner}/${each.value.github_repo}:ref:refs/heads/main"]
+      #
+      # Two forms, because GitHub issues two. The classic subject names the
+      # owner and repository as strings; the immutable subject appends numeric
+      # IDs to each -- repo:owner@136675538/name@1355406331:ref:... -- so that
+      # a rename cannot silently transfer a role's trust to whoever claims the
+      # freed name. Which one a repository emits is a GitHub-side setting
+      # (GET /repos/{owner}/{repo}/actions/oidc/customization/sub), not
+      # something this configuration controls, and it can change under a
+      # working pipeline. Matching only the classic form produced exactly that:
+      # "Not authorized to perform sts:AssumeRoleWithWebIdentity" against a
+      # trust policy that looked correct in every field.
+      #
+      # The wildcards cover only the ID suffixes. Owner, repository and ref
+      # stay pinned, so this is no weaker than one exact string -- a different
+      # repository still cannot match.
+      values = [
+        "repo:${each.value.owner}/${each.value.github_repo}:ref:refs/heads/main",
+        "repo:${each.value.owner}@*/${each.value.github_repo}@*:ref:refs/heads/main",
+      ]
     }
   }
 }
@@ -116,10 +134,23 @@ data "aws_iam_policy_document" "ci_ecr" {
     resources = ["*"]
   }
   statement {
+    # The write path is only half of what a push needs. buildx resolves the
+    # existing manifest before it uploads -- and cosign, which signs and then
+    # attests the digest it just pushed, reads the manifest back the same way --
+    # so BatchGetImage and DescribeImages are as load-bearing here as PutImage.
+    # Without BatchGetImage the push itself fails, after the build and the scan
+    # have both succeeded:
+    #
+    #   denied: ... not authorized to perform: ecr:BatchGetImage
+    #
+    # These are reads of the caller's own repositories, scoped identically to
+    # the writes below, so nothing widens: the role still cannot see any other
+    # application's images.
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:CompleteLayerUpload",
       "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload",
       "ecr:PutImage", "ecr:UploadLayerPart",
+      "ecr:BatchGetImage", "ecr:DescribeImages",
     ]
     # Exactly this caller's repositories, enumerated. Not a wildcard over the
     # account's registry, and not a prefix match that a later application
