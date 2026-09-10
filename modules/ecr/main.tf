@@ -1,3 +1,11 @@
+# Image repositories only.
+#
+# Registry-level configuration deliberately does NOT live here. Scanning
+# configuration is a single account-wide, per-region resource, so any root
+# module that instantiated this one would be claiming ownership of it -- and
+# once two roots claim it, every apply reverts the other's, forever, with both
+# plans looking correct in isolation. It lives in modules/ecr-registry, which
+# exactly one root instantiates. See that module's comment.
 resource "aws_ecr_repository" "this" {
   for_each             = toset(var.repository_names)
   name                 = each.value
@@ -44,20 +52,4 @@ resource "aws_ecr_lifecycle_policy" "this" {
       }
     ]
   })
-}
-
-# Registry-wide policy: require cosign-verified images to be at least scanned
-# before they can be pulled by the cluster's runtime. Enforced pull-side by
-# Kyverno's verifyImages policy; this just guarantees scan-on-push is never
-# skipped at the registry.
-resource "aws_ecr_registry_scanning_configuration" "this" {
-  scan_type = "ENHANCED"
-
-  rule {
-    scan_frequency = "CONTINUOUS_SCAN"
-    repository_filter {
-      filter      = "*"
-      filter_type = "WILDCARD"
-    }
-  }
 }

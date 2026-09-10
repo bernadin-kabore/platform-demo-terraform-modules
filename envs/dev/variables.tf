@@ -29,37 +29,6 @@ variable "admin_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
-variable "applications" {
-  description = <<-EOT
-    Every application the platform delivers, keyed by application name.
-
-    An application is one source repository holding N services. This produces
-    one ECR repository per service (<application>-<service>) and one CI role
-    per application, federated from that application's source repository.
-
-    Add an entry here when the Backstage scaffolder creates an application —
-    until Terraform has run there is no repository to push images to and no
-    role for its pipeline to assume.
-
-      applications = {
-        checkout-platform = {
-          github_owner = "bernadin-kabore"
-          services     = ["frontend", "auth", "payments", "worker"]
-        }
-      }
-
-    This replaced the earlier `services` map and the `ecr_repository_names`
-    list, both of which assumed one repository per service and keyed a CI role
-    by a repository name that no longer exists.
-  EOT
-  type = map(object({
-    github_owner = string
-    services     = list(string)
-    source_repo  = optional(string)
-  }))
-  default = {}
-}
-
 variable "platform_services" {
   description = <<-EOT
     The platform's own image-producing repositories — one repository, one
@@ -74,6 +43,34 @@ variable "owner" {
   description = "Tag identifying who owns these resources"
   type        = string
   default     = "platform-team"
+}
+
+variable "role_vending_repo" {
+  description = <<-EOT
+    The repository holding the role vending machine, which this root bootstraps
+    a CI role for. Leave null to skip creating it — the permissions boundary is
+    still created either way, since the vending machine reads it by data source.
+
+    The vending machine cannot create its own CI role: it is the thing that
+    creates roles. Something outside it has to go first, and this is it.
+
+      role_vending_repo = {
+        github_owner = "bernadin-kabore"
+      }
+
+    state_bucket defaults to platform-demo-tfstate-<account id>, the name
+    modules/state-backend suggests. Set it only if the vending repository's
+    backend.hcl names a different bucket — the CI role's state permissions are
+    scoped to exactly that bucket and key prefix.
+  EOT
+  type = object({
+    github_owner     = string
+    name             = optional(string, "platform-demo-role-vending")
+    state_bucket     = optional(string)
+    state_key_prefix = optional(string, "platform-demo/role-vending/")
+    lock_table       = optional(string, "platform-demo-terraform-locks")
+  })
+  default = null
 }
 
 variable "bedrock_model_ids" {

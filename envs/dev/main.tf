@@ -32,9 +32,20 @@ module "karpenter_iam" {
 module "service_delivery" {
   source            = "../../modules/compositions/service-delivery-foundation"
   name_prefix       = var.cluster_name
-  applications      = var.applications
   platform_services = var.platform_services
   tags              = local.tags
+}
+
+# Account-wide ECR configuration, owned here and nowhere else.
+#
+# Split out of modules/ecr when the role vending machine began creating ECR
+# repositories from its own state. The scanning configuration is a singleton
+# per account and region, so had it stayed inside modules/ecr both roots would
+# have held a copy and each apply would have reverted the other, with neither
+# plan looking wrong. Repositories belong to whichever root vends them; the
+# registry belongs to the platform.
+module "ecr_registry" {
+  source = "../../modules/ecr-registry"
 }
 
 # ---------------------------------------------------------------------------

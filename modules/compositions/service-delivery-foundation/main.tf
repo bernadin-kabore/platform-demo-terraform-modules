@@ -2,6 +2,13 @@ data "tls_certificate" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+# The account's one GitHub Actions OIDC provider.
+#
+# An AWS account holds exactly one provider per issuer URL. This root creates
+# it; the role vending machine reads it with a data source rather than
+# declaring its own, because a second declaration is not a conflict Terraform
+# reports at plan time -- it is EntityAlreadyExists at apply time, against a
+# plan that looked clean.
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
@@ -9,67 +16,29 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags            = var.tags
 }
 
-# Two kinds of image-producing repository, deliberately kept apart.
+# The platform's OWN image-producing repositories, and only those.
 #
-# An APPLICATION is what the Backstage scaffolder creates: one source
-# repository holding N services, each publishing its own image. ECR
-# repositories are keyed per service (<application>-<service>), because a
-# service is what produces an artifact; the CI role is keyed per application,
-# because a GitHub repository is what an OIDC identity can be federated for.
-# A role per service would not be tighter — every service's build job runs in
-# the same repository on the same branch, so all of them present an identical
-# subject claim. The real boundary is the application: checkout-platform's
-# pipeline can push to checkout-platform's image repositories and no others.
+# Applications -- what the Backstage scaffolder creates -- used to be handled
+# here too, through an `applications` map in envs/dev/terraform.tfvars. They
+# are not any more: they are vended by platform-demo-role-vending from its own
+# state, so onboarding an application no longer proposes a plan against the
+# state that owns the VPC and the EKS control plane.
 #
-# A PLATFORM SERVICE is one of the platform's own components — the AI Platform
-# Agent, say — which is a single repository producing a single image and was
-# never scaffolded. Its ECR repository is named after the repository itself,
-# because that is what the manifests in platform-demo-gitops already reference.
-# Modelling it as a one-service application would rename its image for no
-# reason other than to make the type uniform.
+# What stays here is the handful of components that were never scaffolded, are
+# one repository producing one image, and whose ECR repository is named after
+# the repository itself because the manifests in platform-demo-gitops already
+# reference it that way. Modelling those as applications would rename their
+# images for no reason other than uniformity.
 locals {
-  # { "checkout-platform-auth" = { application = "checkout-platform", ... } }
-  application_services = merge([
-    for app_name, app in var.applications : {
-      for service in app.services :
-      "${app_name}-${service}" => {
-        application = app_name
-        service     = service
-      }
+  ecr_repository_names = keys(var.platform_services)
+
+  ci_roles = {
+    for repo_name, svc in var.platform_services : repo_name => {
+      github_repo      = repo_name
+      owner            = svc.github_owner
+      ecr_repositories = [repo_name]
     }
-  ]...)
-
-  # { "checkout-platform" = ["checkout-platform-auth", "checkout-platform-payments"] }
-  application_ecr_repositories = {
-    for app_name, app in var.applications :
-    app_name => [for service in app.services : "${app_name}-${service}"]
   }
-
-  # Everything that needs an ECR repository, whichever kind it is.
-  ecr_repository_names = concat(
-    keys(local.application_services),
-    keys(var.platform_services),
-  )
-
-  # Every CI role, keyed identically to how it is consumed: the map key is what
-  # the operator looks up in the ci_role_arns output to set AWS_CI_ROLE_ARN.
-  ci_roles = merge(
-    {
-      for app_name, app in var.applications : app_name => {
-        github_repo = coalesce(app.source_repo, "${app_name}-source")
-        owner       = app.github_owner
-        # Every service repository belonging to this application.
-        ecr_repositories = local.application_ecr_repositories[app_name]
-      }
-    },
-    {
-      for repo_name, svc in var.platform_services : repo_name => {
-        github_repo      = repo_name
-        owner            = svc.github_owner
-        ecr_repositories = [repo_name]
-      }
-    },
-  )
 }
 
 module "ecr" {

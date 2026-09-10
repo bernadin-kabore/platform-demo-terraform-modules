@@ -6,17 +6,18 @@ az_count           = 2
 admin_cidrs        = ["203.0.113.4/32"] # replace with your own IP/32
 owner              = "your-name"
 
-# One entry per application the Backstage scaffolder has created. The key is
-# the application name; the source repository defaults to <key>-source, which
-# is what the scaffolder publishes.
-applications = {
-  # checkout-platform = {
-  #   github_owner = "YOUR_GITHUB_OWNER"
-  #   services     = ["frontend", "auth", "payments", "worker"]
-  # }
-}
+# Applications created by the Backstage scaffolder are NOT configured here.
+# They are vended by platform-demo-role-vending, which holds one file per
+# application and its own Terraform state, so onboarding one cannot propose a
+# change to the cluster this root owns.
 
 # The platform's own single-image repositories, which are not applications.
 platform_services = {
   platform-demo-ai-agent = { github_owner = "YOUR_GITHUB_OWNER" }
+}
+
+# Bootstraps the CI role for the role vending machine repository.
+# Leave unset to skip it; the permissions boundary is created either way.
+role_vending_repo = {
+  github_owner = "YOUR_GITHUB_OWNER"
 }

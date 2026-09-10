@@ -56,3 +56,18 @@ output "kyverno_admission_role_arn" {
   description = "IRSA role letting Kyverno pull image manifests and cosign signatures from ECR"
   value       = module.irsa_kyverno.role_arn
 }
+
+output "vended_role_boundary_arn" {
+  description = "The ceiling every vended role is capped at. platform-demo-role-vending reads this policy by name; the value is here so an audit can compare them."
+  value       = module.vended_role_boundary.arn
+}
+
+output "role_vending_ci_role_arn" {
+  description = "Set as AWS_ROLE_ARN on platform-demo-role-vending. Null when role_vending_repo is not configured."
+  value       = local.vending_enabled ? aws_iam_role.role_vending[0].arn : null
+}
+
+output "role_vending_plan_role_arn" {
+  description = "Set as AWS_PLAN_ROLE_ARN on platform-demo-role-vending. Read-only, assumed by pull request builds."
+  value       = local.vending_enabled ? aws_iam_role.role_vending_plan[0].arn : null
+}

@@ -1,0 +1,17 @@
+# Everything in this repository that can widen what a vended role may do.
+#
+# The role declarations themselves are not here -- they live in
+# platform-demo-role-vending. What lives here is the ceiling those declarations
+# are capped at, which is precisely why it is somewhere the vending pipeline
+# cannot reach.
+
+# The ceiling every vended role is capped at, and the catalogue that defines
+# what self-service may ask for. A change to either changes what every vended
+# role can do -- including ones that already exist. The declarations themselves
+# live in platform-demo-role-vending, which has its own CODEOWNERS.
+/modules/vended-role-boundary/ @bernadin-kabore
+/modules/role-vending-machine/ @bernadin-kabore
+
+# The rest of the platform's AWS surface.
+/envs/dev/ @bernadin-kabore
+/modules/ @bernadin-kabore
